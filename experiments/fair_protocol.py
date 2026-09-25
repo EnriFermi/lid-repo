@@ -17,6 +17,8 @@ from models.point_residual_field import PointResidualCore
 ROOT=Path(__file__).resolve().parents[1]
 PROTOCOL_PATH=ROOT/'configs/fair_comparison/protocol.yaml'
 CONTRACTS_PATH=ROOT/'configs/lambda_repair/native_contracts.yaml'
+# Methods that carry two copies of the shared field core.
+TWO_CORE_VARIANTS=('schrodinger_bridge','logistic_flowmatching')
 COMMON_TRAINING_KEYS=('seed','steps','batch_size','learning_rate','weight_decay',
     'gradient_clip_norm','validation_interval_steps','warmup_steps','noise_pairing',
     'terminal_decay_steps','terminal_learning_rate_ratio','ema_decay','ema_start_step',
@@ -40,9 +42,10 @@ def native_contracts():
         base.update(id=variant,name=settings['name'],family=settings['family'],
             readout='full',primary_readout='full',native_coordinate='lambda',
             kernel_df=settings['kernel_df'],scale_units='per_coordinate_rms_noise')
+        # A kernel without a degrees-of-freedom parameter keeps every tail setting inactive.
         base['training'].update(kernel_df=settings['kernel_df'],
-            kernel_log_scale_mean=additions['pfgm_log_sigma_mean'],
-            kernel_log_scale_std=additions['pfgm_log_sigma_std'])
+            kernel_log_scale_mean=additions['pfgm_log_sigma_mean'] if settings['kernel_df'] is not None else None,
+            kernel_log_scale_std=additions['pfgm_log_sigma_std'] if settings['kernel_df'] is not None else None)
         result[variant]=base
     task_rules=yaml.safe_load((ROOT/'configs/fair_comparison/native_tasks.yaml').read_text())
     for variant in task_rules['retired_variants']:
@@ -179,7 +182,7 @@ def resolve(variant,geo,*,rank=None,device='cuda',steps=None,preflight=False):
     # Construct once: per-family contracts must see the final architecture and
     # optimizer policy, never a transient mixture of legacy/new settings.
     config=training.TrainingConfig.from_mapping({**base['training'],**keys})
-    return config,dict(**cap,actual_parameters=cap['nf_parameters'] if nf else cap['reference_parameters']*(2 if variant=='schrodinger_bridge' else 1),
+    return config,dict(**cap,actual_parameters=cap['nf_parameters'] if nf else cap['reference_parameters']*(2 if variant in TWO_CORE_VARIANTS else 1),
         geometry=geo,rank=rank,kind='preflight' if preflight else 'benchmark',
         common_field_backbone=dict(field_rule),
         protocol_id=rules['id'],protocol_sha256=digest(rules),
@@ -221,7 +224,7 @@ def audit_group(rows,*,include_disabled=False):
             if (not item['nf_capacity_match_required'] or
                   abs(item['actual_parameters']/item['reference_parameters']-1)>item['nf_maximum_relative_parameter_gap']):
                 raise ValueError('NF capacity outside tolerance')
-        elif item['actual_parameters']!=item['reference_parameters']*(2 if row['variant']=='schrodinger_bridge' else 1):
+        elif item['actual_parameters']!=item['reference_parameters']*(2 if row['variant'] in TWO_CORE_VARIANTS else 1):
             raise ValueError('field backbones do not match')
         shared={k:v for k,v in item['common_training'].items() if k!='ema_decay'}
         if shared!={k:v for k,v in first['common_training'].items() if k!='ema_decay'}:

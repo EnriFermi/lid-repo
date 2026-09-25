@@ -11,8 +11,8 @@ def test_disabled_pfgm_is_absent_from_matrix_and_score_coverage():
     assert 'pfgmpp' in fair.native_contracts()
     assert 'pfgmpp' not in fair.active_native_contracts()
     plan=campaign.matrix()
-    assert plan['trainings']==429 and plan['native_interfaces']==11
-    assert plan['implemented_interfaces']==12 and 'pfgmpp' in plan['disabled_variants']
+    assert plan['trainings']==468 and plan['native_interfaces']==12
+    assert plan['implemented_interfaces']==13 and 'pfgmpp' in plan['disabled_variants']
     assert all(row['variant']!='pfgmpp' for row in plan['rows'])
     assert all(row['model_variant']!='pfgmpp' for row in outputs.table_scores([],[]))
     # The scientific implementation and exact mixed kernel have not been deleted.

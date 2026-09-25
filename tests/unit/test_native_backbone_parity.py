@@ -31,7 +31,7 @@ def test_every_image_field_uses_the_same_stock8_core_and_matched_nf(shape,dimens
         else:
             assert type(model.core) is ImageUNet and cfg.image_width==8
             assert model.core.input.out_channels==8
-            assert fair.parameter_count(model)==field_count*(2 if variant=='schrodinger_bridge' else 1)
+            assert fair.parameter_count(model)==field_count*(2 if variant in fair.TWO_CORE_VARIANTS else 1)
             signature={k:tuple(v.shape) for k,v in model.core.state_dict().items()}
             if reference is None:reference=signature
             assert signature==reference
@@ -59,7 +59,7 @@ def test_full_vector_core_is_shared_with_both_new_families():
         assert not any('spatial_frequencies' in key for key in model.state_dict())
         assert cfg.field_residual_width==512 and cfg.field_projection_rank is None
         assert len(model.core.blocks)==4 and model.core.output.out_features==30
-        assert fair.parameter_count(model)==receipt['actual_parameters']==2698014*(2 if variant=='schrodinger_bridge' else 1)
+        assert fair.parameter_count(model)==receipt['actual_parameters']==2698014*(2 if variant in fair.TWO_CORE_VARIANTS else 1)
         signature={k:tuple(v.shape) for k,v in model.core.state_dict().items()}
         if reference is None:reference=signature
         assert signature==reference

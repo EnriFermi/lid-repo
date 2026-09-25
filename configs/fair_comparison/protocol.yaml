@@ -1,6 +1,6 @@
 schema_version: 13
 id: native_tasks_points_scalar_nf_pfgm_disabled_v13
-scope: all 39 campaign representations and 11 active methods; four explicitly author-defined controls
+scope: all 39 campaign representations and 12 active methods; four explicitly author-defined controls
 disabled_variants:
   pfgmpp: author-deferred pending a valid clipped-kernel Full readout; implementation retained
 architecture_rule: point coordinates or full images; no spatial feature expansion or fitted support projection

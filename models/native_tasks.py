@@ -21,13 +21,14 @@ VARIANTS = (
     'schrodinger_bridge', 'posterior_rectified_flow',
     'direct_log_noise_affine_flow', 'posterior_log_noise_affine_flow',
     'direct_vp_trigonometric_flow', 'posterior_vp_trigonometric_flow',
-    't_flowmatching', 'pfgmpp',
+    't_flowmatching', 'pfgmpp', 'logistic_flowmatching',
 )
 CUSTOM = frozenset(('posterior_rectified_flow', 'direct_log_noise_affine_flow',
                    'posterior_log_noise_affine_flow', 'posterior_vp_trigonometric_flow'))
 FAMILIES = dict(vp_diffusion='vp_diffusion',ve_diffusion='gaussian_diffusion',
     rectified_flow='rectified_flow',scale_conditioned_nf='scale_conditioned_normalizing_flow',
     schrodinger_bridge='brownian_schrodinger_bridge',t_flowmatching='student_t_flow',pfgmpp='pfgmpp',
+    logistic_flowmatching='logistic_flow',
     **{v:'independent_affine_flow' for v in CUSTOM|{'direct_vp_trigonometric_flow'}})
 SOURCES = {
     'flipd': 'https://github.com/layer6ai-labs/flipd/tree/05ab170c2c9bcada3f9286c3ef86db31b80925fa',
@@ -78,6 +79,7 @@ def contract(cfg, family):
            'log_noise_velocity' if v == 'direct_log_noise_affine_flow' else
            'student_noise' if v == 't_flowmatching' else
            'edm_residual' if v == 'pfgmpp' else
+           'velocity_and_kernel_score' if v == 'logistic_flowmatching' else
            'two_transition_increments' if v == 'schrodinger_bridge' else
            'conditional_invertible_transform' if v == 'scale_conditioned_nf' else 'clean_endpoint')
     return dict(schema_version=3, family=family, native_variant=v,
@@ -94,7 +96,17 @@ def contract(cfg, family):
                  terminal='data', num_steps=cfg.dsb_num_steps, step_size=cfg.dsb_step_size,
                  ipf_rounds=cfg.dsb_ipf_rounds, raw_output='transition_increment',
                  checkpoint_selection='final_ipf_pair') if v == 'schrodinger_bridge' else None,
+        **(dict(logistic=dict(source='independent_product_logistic_unit_variance',
+                scale=native_logistic_scale(),condition='999*t',time_sampling='uniform(0,1)',
+                heads=['velocity X-Z','kernel score psi(Z)'],cores=2,
+                full_readout='response + E[Z|y] . E[psi(Z)|y]'))
+           if v == 'logistic_flowmatching' else {}),
         settings=cfg.to_dict())
+
+
+def native_logistic_scale():
+    from models.native_logistic import S0
+    return float(S0)
 
 
 def _condition(value, x):
@@ -188,6 +200,9 @@ def build_field(architecture, family, cfg):
     if cfg.native_variant == 'schrodinger_bridge':
         from models.native_bridge import NativeDSB
         return NativeDSB(architecture, family, cfg)
+    if cfg.native_variant == 'logistic_flowmatching':
+        from models.native_logistic import NativeLogisticFlow
+        return NativeLogisticFlow(architecture, family, cfg)
     return NativeField(architecture, family, cfg)
 
 
@@ -262,6 +277,9 @@ def sample_batch(clean, cfg, generator):
 def objective(model, clean, cfg, generator):
     if cfg.native_variant == 'schrodinger_bridge':
         return model.ipf_loss(clean,generator)
+    if cfg.native_variant == 'logistic_flowmatching':
+        # Both cores see one shared corruption draw; each receives the common step budget.
+        return model.two_head_loss(clean,generator)
     inputs,condition,target,weight = sample_batch(clean,cfg,generator)
     error = (model(inputs,condition)-target).square()
     # FLIPD explicitly sums coordinates; the other recipes use mean MSE.
@@ -325,6 +343,11 @@ def predict(model, query, scale, mean, normalization, readout, backend, probes, 
             value = response
         elif cfg.native_variant == 't_flowmatching':
             value = density_dilation(adapter,x,scale,response,cfg.kernel_df)[0]
+        elif cfg.native_variant == 'logistic_flowmatching':
+            # Full = tr J_q + E[U|y].E[psi(U)|y]; the Gaussian formula is not valid here.
+            with torch.no_grad():
+                q = adapter(x,scale)
+                value = response+(((x-q)/scale)*model.posterior_kernel_score(x,scale)).sum(1)
         else:
             with torch.no_grad():
                 q = adapter(x,scale)

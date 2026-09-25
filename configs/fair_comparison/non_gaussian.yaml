@@ -14,3 +14,8 @@ models:
     name: PFGM++ augmented dimension128, EDM posterior objective
     kernel_df: 128
     reference: https://proceedings.mlr.press/v202/xu23m/xu23m.pdf
+  logistic_flowmatching:
+    family: logistic_flow
+    name: Independent product-logistic flow matching with a kernel-score head
+    kernel_df: null
+    reference: unit-variance logistic source; Full uses the kernel-score identity

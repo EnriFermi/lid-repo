@@ -23,3 +23,4 @@ output/
 
 # Private manuscript sources. Keep the draft out of the reviewer-facing repo.
 /paper/
+runs/

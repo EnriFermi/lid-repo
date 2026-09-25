@@ -106,6 +106,7 @@ Family = Literal[
     "scale_conditioned_normalizing_flow",
     "student_t_flow",
     "pfgmpp",
+    "logistic_flow",
 ]
 LogCallback = Callable[[Mapping[str, float | int | bool | str]], None]
 CHECKPOINT_SCHEMA_VERSION = 2
@@ -1113,6 +1114,8 @@ def _canonical_family(family: str) -> Family:
         "student_t_flow": "student_t_flow",
         "t_flowmatching": "student_t_flow",
         "pfgmpp": "pfgmpp",
+        "logistic_flow": "logistic_flow",
+        "logistic_flowmatching": "logistic_flow",
     }
     try:
         return aliases[str(family)]

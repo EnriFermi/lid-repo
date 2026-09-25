@@ -21,7 +21,7 @@ from experiments import fair_measurements as measurement
 from experiments import fair_outputs as outputs
 from experiments import fair_data
 from experiments.fair_protocol import (ROOT,protocol,native_contracts,active_native_contracts,geometry,resolve,
-    parameter_count,source_identity,digest,audit_group,capacities)
+    parameter_count,source_identity,digest,audit_group,capacities,TWO_CORE_VARIANTS)
 from models import training
 from models.native_tasks import valid_scales
 
@@ -64,7 +64,7 @@ def matrix():
                 geometry=geo,architecture=('spatial RealNVP with U-Net conditioners' if geo['kind']=='image' else 'full-ambient RealNVP')
                     if variant=='scale_conditioned_nf' else ('shared U-Net' if geo['kind']=='image' else 'shared point residual'),
                 backbone_width=cap['nf_width'] if nf else rules[geo['kind']+'_data']['width'],
-                parameters=cap['nf_parameters'] if nf else cap['reference_parameters']*(2 if variant=='schrodinger_bridge' else 1),
+                parameters=cap['nf_parameters'] if nf else cap['reference_parameters']*(2 if variant in TWO_CORE_VARIANTS else 1),
                 capacity_resolution=cap['nf_capacity_policy'] if nf else 'identical shared field core for every native family',
                 protocol_sha256=digest(rules)))
     assert len(rows)==len(active_native_contracts())*len(v2.APPROVED_GLOBAL_CELL_KEYS)

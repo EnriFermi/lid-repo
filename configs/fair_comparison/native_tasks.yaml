@@ -71,6 +71,14 @@ models:
       sigma_max: null
       kernel_log_scale_mean: null
       kernel_log_scale_std: null
+  logistic_flowmatching:
+    name: Logistic-source flow matching, velocity and kernel-score heads
+    training:
+      sigma_min: null
+      sigma_max: null
+      kernel_df: null
+      kernel_log_scale_mean: null
+      kernel_log_scale_std: null
   pfgmpp:
     name: PFGM++ author-clipped Beta sampler and EDM denoiser
     training:

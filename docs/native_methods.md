@@ -1,7 +1,7 @@
 # Native learning tasks (v9), point inputs (v11), scalar NF conditioning (v12)
 
 Current experiment protocol v13 excludes PFGM++ by the author's decision:
-39 representations ×11 active methods =429 cells. Its implementation, clipped
+39 representations ×12 active methods =468 cells. Its implementation, clipped
 kernel and tests remain available. Matrix construction, launch admission,
 group completeness and score-table generation use the active roster; disabled
 PFGM++ is not counted as a failed/missing experimental result. The equations
@@ -75,6 +75,7 @@ parameters; image NF uses two width5 conditioners with91,300 grayscale or
 | `direct_vp_trigonometric_flow` | Y=sin(pi t/2)X+cos(pi t/2)Z; t uniform in [0,1), condition t | F predicts (pi/2)[cos(pi t/2)X-sin(pi t/2)Z]; unweighted MSE | Trigonometric InterFlow's uniform-time theoretical objective [5] |
 | `posterior_vp_trigonometric_flow` | Y=(X+lambda Z)/sqrt(1+lambda²); condition log(lambda) | F predicts X; lambda^-2 MSE | Author control; not vanilla direct InterFlow |
 | `t_flowmatching` | Y=tX+(1-t)eta; uniform t in [0,1); condition 1-t; eta=Z/sqrt(U/nu), U~chi²(nu) once per vector, nu=5 | F predicts eta; unweighted MSE | Native t-Flow noise regression [6] |
+| `logistic_flowmatching` | Y=tX+(1-t)Z with independent unit-variance product-logistic Z, t uniform in [0,1); condition 999t | Two shared cores on one corruption draw: velocity X-Z and kernel score psi(Z)=tanh(Z/(2 s0))/s0, s0=sqrt(3)/pi; unweighted MSE each | Non-Gaussian convolution kernel; Full = tr J_q + E[Z|y].E[psi(Z)|y], the exact scale-derivative identity, so no CNF or NF density is needed |
 | `pfgmpp` | Y=X+noise from the author's clipped radial kernel; log(sigma)~N(-1.2,1.2²) | Native EDM residual F and weighted denoising loss, detailed below | PFGM++ clipped implementation with augmented dimension 128 [8] |
 
 The four author controls retain loguniform lambda in [1/256,64] and their
@@ -256,3 +257,14 @@ performed. These results verify implementation mechanics, not learned quality.
 6. [t-Flow, 2410.14171](https://arxiv.org/abs/2410.14171): Appendix B noise regression and native conditioning.
 7. [Dinh et al., Density Estimation Using Real NVP](https://arxiv.org/abs/1605.08803): exact invertible density objective; sigma conditioning is our approved adaptation.
 8. [Xu et al., PFGM++](https://arxiv.org/abs/2302.04265), [source pin d57c1ee](https://github.com/Newbeeer/pfgmpp/tree/d57c1ee4488d8e4064a5b9c8548792f00395aa8b): `training/loss.py` and EDM preconditioning.
+
+## Logistic-source flow matching
+
+The source is independent across coordinates with unit variance, so the endpoint kernel is a genuine
+non-Gaussian convolution kernel whose shape does not change as the scale vanishes. For a non-Gaussian
+kernel the velocity alone does not determine the density derivative: with U=(Y-X)/lambda and
+psi=-grad log p_Z, the scale continuity equation gives Full = tr J_q + E[U|y].E[psi(U)|y], and the
+Gaussian case psi(u)=u recovers the usual squared-displacement term. The second shared core regresses
+psi(Z) on the same corruption draw, so the row carries two field cores exactly as the DSB row does and
+each core receives the common step budget. The logistic law is chosen because psi is bounded by
+1/s0 and the density is smooth, so the noisy density has no kink on the data.
