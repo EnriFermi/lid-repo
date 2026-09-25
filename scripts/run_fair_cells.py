@@ -8,6 +8,10 @@ complete receipt, and never modifies an existing output directory.
         --cells e6/e6_exp_pca/dataset,e6/e6_exp_pca/coefficients \
         --canonical-root data/lid_benchmarks_exact/benchmarks \
         --output runs/logistic --gpus 0,1 --per-gpu 2
+
+Unknown-LID dependent cells (E1 step2..13, E5 transformations) need their suite's completed
+reference receipt. The runner resolves it from the campaign inventory, starts a dependent cell
+only after its reference in the same output root is complete, and passes `--reference`.
 """
 from __future__ import annotations
 
@@ -33,9 +37,18 @@ def completed(directory: Path) -> bool:
     return json.loads(receipt.read_text()).get('status') == 'complete'
 
 
-def command(args, cell: str, directory: Path) -> list[str]:
+def reference_key(meta) -> str | None:
+    """Key of the frozen-scale reference cell a dependent unknown-LID cell must reuse."""
+    if meta.target_policy == 'known_lid' or meta.reference_dataset in (None, meta.dataset):
+        return None
+    return f'{meta.suite_id}/{meta.reference_dataset}/{meta.representation}'
+
+
+def command(args, cell: str, directory: Path, reference: Path | None = None) -> list[str]:
     value = [sys.executable, '-m', 'experiments.fair_campaign', 'run',
              '--variant', args.variant, '--cell', cell, '--output', str(directory)]
+    if reference is not None:
+        value += ['--reference', str(reference)]
     if args.canonical_root:
         value += ['--canonical-root', str(args.canonical_root)]
     if args.generated_root:
@@ -65,7 +78,18 @@ def main() -> int:
     slots = [gpu for gpu in args.gpus.split(',') if gpu.strip() for _ in range(args.per_gpu)]
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output/'logs').mkdir(exist_ok=True)
+    from experiments.fair_campaign import inventory
+    metadata = {c.key: c for c in inventory()[1]}
+    unknown = [c for c in cells if c not in metadata]
+    if unknown:
+        raise SystemExit(f'cells not in the campaign inventory: {unknown}')
+    references = {c: reference_key(metadata[c]) for c in cells}
+    for cell, ref in references.items():
+        if ref is not None and ref not in cells and not completed(cell_directory(args.output, args.variant, ref)):
+            raise SystemExit(f'{cell} needs reference {ref}: add it to --cells or complete it in --output first')
     pending = [c for c in cells if not completed(cell_directory(args.output, args.variant, c))]
+    # references first, so dependents can start as soon as their reference completes
+    pending.sort(key=lambda c: references[c] is not None)
     print(json.dumps(dict(cells=len(cells), pending=len(pending), slots=len(slots))), flush=True)
     running: dict[str, tuple[subprocess.Popen, str, float]] = {}
     failures: list[str] = []
@@ -75,8 +99,22 @@ def main() -> int:
             busy = {g for _, g, _ in running.values()}
             free = [g for g in slots if slots.count(g) > sum(1 for _, other, _ in running.values() if other == g)]
             gpu = free[0] if free else gpu
-            cell = pending.pop(0)
+            def ready(c):
+                ref = references[c]
+                return ref is None or completed(cell_directory(args.output, args.variant, ref))
+            blocked = [c for c in pending if references[c] in failures]
+            for c in blocked:
+                pending.remove(c)
+                failures.append(c)
+                print(json.dumps(dict(cell=c, skipped='reference failed: ' + references[c])), flush=True)
+            candidates = [c for c in pending if ready(c)]
+            if not candidates:
+                break
+            cell = candidates[0]
+            pending.remove(cell)
             directory = cell_directory(args.output, args.variant, cell)
+            ref = references[cell]
+            reference = None if ref is None else cell_directory(args.output, args.variant, ref)/'complete.json'
             if directory.exists() and not completed(directory):
                 print(json.dumps(dict(cell=cell, skipped='existing incomplete output directory')), flush=True)
                 failures.append(cell)
@@ -84,10 +122,15 @@ def main() -> int:
             log = (args.output/'logs'/f"{cell.replace('/', '__')}.log").open('a')
             environment = dict(os.environ, CUDA_VISIBLE_DEVICES=gpu,
                                CUBLAS_WORKSPACE_CONFIG=os.environ.get('CUBLAS_WORKSPACE_CONFIG', ':4096:8'))
-            process = subprocess.Popen(command(args, cell, directory), cwd=ROOT, env=environment,
+            process = subprocess.Popen(command(args, cell, directory, reference), cwd=ROOT, env=environment,
                                        stdout=log, stderr=subprocess.STDOUT)
             running[cell] = (process, gpu, time.monotonic())
-            print(json.dumps(dict(started=cell, gpu=gpu, pid=process.pid)), flush=True)
+            print(json.dumps(dict(started=cell, gpu=gpu, pid=process.pid, reference=ref)), flush=True)
+        if not running and pending:
+            for c in pending:
+                failures.append(c)
+                print(json.dumps(dict(cell=c, skipped='reference never completed: ' + str(references[c]))), flush=True)
+            pending.clear()
         time.sleep(10)
         for cell, (process, gpu, started) in list(running.items()):
             if process.poll() is None:
