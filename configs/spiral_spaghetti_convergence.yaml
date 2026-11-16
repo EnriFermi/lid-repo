@@ -1,0 +1,29 @@
+seed: 20260905
+device: cuda:0
+output: artifacts/spiral_spaghetti_convergence_20260905/run
+archive: artifacts/spiral_spaghetti_convergence_20260905/benchmarks.zip
+datasets: [e1_spiral_pca, e8_spaghetti_pca]
+base_steps: 8000
+continuation_steps: 2000
+average_steps: 500
+batch_size: 512
+hidden_dim: 256
+depth: 3
+condition_dim: 128
+learning_rate: 0.0002
+weight_decay: 0.000001
+gradient_clip: 1.0
+lambda_min: 0.01
+lambda_max: 1.0
+scales: [0.01, 0.0178, 0.0316, 0.0562, 0.1, 0.1778, 0.3162, 0.5623, 1.0]
+query_count: 64
+risk_count: 256
+holdout_count: 2048
+log_interval: 500
+deadline_utc: '2026-09-05T22:03:20+00:00'
+hydra:
+  run:
+    dir: ${output}/hydra
+  job:
+    chdir: false
+  output_subdir: .hydra
